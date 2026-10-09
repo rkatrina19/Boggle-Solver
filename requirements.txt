@@ -1,0 +1,7 @@
+streamlit>=1.50
+opencv-python-headless>=4.8
+numpy
+pandas
+pillow
+scikit-image
+openpyxl
