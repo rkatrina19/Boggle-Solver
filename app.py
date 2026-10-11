@@ -31,15 +31,58 @@ def to_df_grid(grid):
                         index=[f"row {i + 1}" for i in range(n)])
 
 
-st.title("Boggle Photo Solver")
-st.caption("Upload a photo of a Boggle board, 4x4 or 5x5 (tilted or rotated letters are fine). "
-           "Check the grid it read, fix any mistakes, then solve.")
+ACCENT = "#d9480f"
+
+st.markdown(f"""
+<style>
+.hero {{ text-align:center; padding: 0.5rem 0 0.25rem; }}
+.hero h1 {{ font-size: 2.6rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }}
+.hero p {{ opacity: .7; margin: .35rem 0 0; font-size: 1.05rem; }}
+.pick-title {{ text-align:center; font-size: .8rem; font-weight: 700; letter-spacing: .14em;
+              text-transform: uppercase; opacity: .6; margin: 1.6rem 0 .9rem; }}
+.card {{ border: 2px solid rgba(128,128,128,.28); border-radius: 18px; padding: 1.1rem 1rem .9rem;
+        text-align:center; transition: all .15s ease; background: rgba(128,128,128,.06); }}
+.card.on {{ border-color: {ACCENT}; background: {ACCENT}14; box-shadow: 0 6px 22px {ACCENT}33; }}
+.mini {{ display:grid; gap:4px; width:116px; margin: 0 auto .75rem; }}
+.mini i {{ aspect-ratio:1; border-radius:5px; background: rgba(128,128,128,.38); display:block; }}
+.card.on .mini i {{ background: {ACCENT}; }}
+.card .name {{ font-size: 1.25rem; font-weight: 800; }}
+.card .sub {{ font-size: .88rem; opacity: .65; margin-bottom: .2rem; }}
+.rule {{ height:1px; background: rgba(128,128,128,.22); margin: 1.4rem 0 .6rem; }}
+</style>
+<div class="hero">
+  <h1>Boggle Photo Solver</h1>
+  <p>Snap or upload a photo of your board. We read the letters and find every word.</p>
+</div>
+<div class="pick-title">Step 1 &middot; Choose your board size</div>
+""", unsafe_allow_html=True)
+
+st.session_state.setdefault("board_n", 4)
+
+
+def pick(n):
+    st.session_state.board_n = n
+
+
+BOARDS = {4: ("4 x 4", "Classic Boggle", "16 cubes"), 5: ("5 x 5", "Big Boggle", "25 cubes")}
+_, mid, _ = st.columns([1, 3, 1])
+card_cols = mid.columns(2, gap="large")
+for col, (n, (name, sub, cubes)) in zip(card_cols, BOARDS.items()):
+    on = st.session_state.board_n == n
+    with col:
+        st.markdown(
+            f'<div class="card{" on" if on else ""}">'
+            f'<div class="mini" style="grid-template-columns:repeat({n},1fr)">{"<i></i>" * (n * n)}</div>'
+            f'<div class="name">{name}</div><div class="sub">{sub} &middot; {cubes}</div></div>',
+            unsafe_allow_html=True)
+        st.button("Selected" if on else f"Use {name}", key=f"pick-{n}", on_click=pick, args=(n,),
+                  type="primary" if on else "secondary", width="stretch", disabled=on)
+N = st.session_state.board_n
+
+st.markdown('<div class="rule"></div>', unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("Settings")
-    size_label = st.radio("Board size", ["4 x 4 (Boggle)", "5 x 5 (Big Boggle)"],
-                          help="Pick the size of the board in your photo.")
-    N = 5 if size_label.startswith("5") else 4
     min_len = st.slider("Minimum word length", 3, 5, 3 if N == 4 else 4, key=f"minlen-{N}",
                         help="Classic Boggle accepts 3+ letters; Big Boggle is usually played with 4+.")
     custom = st.file_uploader("Use my own word list (.txt, one word per line)", type=["txt"])
@@ -47,6 +90,8 @@ with st.sidebar:
         "**Scoring**  \n3–4 letters = 1 pt · 5 = 2 · 6 = 3 · 7 = 5 · 8+ = 11  \n"
         "Qu counts as two letters.")
 
+st.markdown('<div class="pick-title" style="margin-top:.4rem">Step 2 &middot; Add your photo</div>',
+            unsafe_allow_html=True)
 tab_up, tab_cam = st.tabs(["Upload a photo", "Use the camera"])
 with tab_up:
     up = st.file_uploader("Photo of the board", type=["png", "jpg", "jpeg", "webp", "bmp"])
@@ -79,7 +124,7 @@ with c2:
     elif not res["cubes_found"]:
         st.warning("Couldn't locate each cube precisely - the board was split evenly instead.")
 
-st.subheader("1 · Check the letters")
+st.subheader("Step 3 · Check the letters")
 st.caption("Edit any cell that is wrong (type **Qu** for the Qu cube). Row 1 is the top of the photo.")
 edited = st.data_editor(to_df_grid(res["grid"]), width="stretch", key=f"grid-{key}",
                         column_config={str(i + 1): st.column_config.TextColumn(str(i + 1), max_chars=2)
@@ -101,7 +146,7 @@ grid = [[clean(v) for v in row] for row in edited.values.tolist()]
 bad = [(r + 1, c + 1) for r in range(N) for c in range(N)
        if not (len(grid[r][c]) == 1 and grid[r][c].isalpha()) and grid[r][c] != "QU"]
 
-st.subheader("2 · Solve")
+st.subheader("Step 4 · Solve")
 if bad:
     st.error(f"Each cell needs one letter (or Qu). Fix: {bad}")
     st.stop()
