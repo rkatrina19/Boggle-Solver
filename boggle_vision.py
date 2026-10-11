@@ -2,7 +2,7 @@
 
 Pipeline
   1. find the dark tray, straighten it (perspective warp)
-  2. locate the 16 cube faces (bright "holes" inside the dark tray)
+  2. locate the n x n cube faces (4x4 Boggle or 5x5 Big Boggle) (bright "holes" inside the dark tray)
   3. for each cube, isolate the black glyph; a thin detached bar is the
      underline printed under M, W and Z - it also tells us how the cube is
      turned (the bar sits below the letter when the letter is upright)
@@ -156,45 +156,48 @@ def _cluster_1d(values, tol):
     return [float(np.mean(g)) for g in groups]
 
 
-def _fit_lattice(boxes):
-    """Place detected cube boxes on a 4x4 lattice; missing cubes (e.g. two cubes
+def _fit_lattice(boxes, n=4):
+    """Place detected cube boxes on an n x n lattice; missing cubes (e.g. two cubes
     merged by glare) are filled in from the spacing of the others."""
     cx = [(b[0] + b[2]) / 2 for b in boxes]
     cy = [(b[1] + b[3]) / 2 for b in boxes]
     size = float(np.median([b[2] - b[0] for b in boxes])), float(np.median([b[3] - b[1] for b in boxes]))
     xs, ys = _cluster_1d(cx, 0.4 * size[0]), _cluster_1d(cy, 0.4 * size[1])
-    if len(xs) < 2 or len(ys) < 2 or len(xs) > 4 or len(ys) > 4:
+    if len(xs) < 2 or len(ys) < 2 or len(xs) > n or len(ys) > n:
         return None
     px = float(np.median(np.diff(xs))) if len(xs) > 1 else None
     py = float(np.median(np.diff(ys))) if len(ys) > 1 else None
     # the tray was warped to a square, so the lattice is centred on the image
-    ix = lambda v: int(np.clip(round((v - WARP / 2) / px + 1.5), 0, 3))
-    iy = lambda v: int(np.clip(round((v - WARP / 2) / py + 1.5), 0, 3))
+    mid = (n - 1) / 2
+    ix = lambda v: int(np.clip(round((v - WARP / 2) / px + mid), 0, n - 1))
+    iy = lambda v: int(np.clip(round((v - WARP / 2) / py + mid), 0, n - 1))
     cells = {}
     for b, x, y in zip(boxes, cx, cy):
         cells[(iy(y), ix(x))] = b
     out = []
-    for r in range(4):
+    for r in range(n):
         row = []
-        for c in range(4):
+        for c in range(n):
             if (r, c) in cells:
                 row.append(cells[(r, c)])
             else:
-                x = WARP / 2 + (c - 1.5) * px
-                y = WARP / 2 + (r - 1.5) * py
+                x = WARP / 2 + (c - mid) * px
+                y = WARP / 2 + (r - mid) * py
                 row.append((int(x - size[0] / 2), int(y - size[1] / 2),
                             int(x + size[0] / 2), int(y + size[1] / 2)))
         out.append(row)
     return out
 
 
-def find_cubes(warped_bgr):
+def find_cubes(warped_bgr, n=4):
     """Return 4x4 list of (x0, y0, x1, y1) boxes, and whether they were detected
     (False -> evenly divided fallback)."""
     gray = cv2.cvtColor(warped_bgr, cv2.COLOR_BGR2GRAY)
     dark = _dark_mask(gray)
     cnts, hier = cv2.findContours(dark, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     area_all = WARP * WARP
+    cell = (0.8 / n) ** 2             # typical cube-face area as a share of the board
+    lo, hi = 0.5 * cell, 2.1 * cell
     holes = {}
     if hier is not None:
         for i, c in enumerate(cnts):
@@ -203,20 +206,20 @@ def find_cubes(warped_bgr):
                 continue
             a = cv2.contourArea(c)
             x, y, w, h = cv2.boundingRect(c)
-            if 0.02 * area_all < a < 0.085 * area_all and 0.6 < w / h < 1.6 and a > 0.55 * w * h:
+            if lo * area_all < a < hi * area_all and 0.6 < w / h < 1.6 and a > 0.55 * w * h:
                 holes.setdefault(parent, []).append((x, y, x + w, y + h))
     if holes:
         best = max(holes.values(), key=len)
         areas = [(b[2] - b[0]) * (b[3] - b[1]) for b in best]
         med = np.median(areas)
         best = [b for b, a in zip(best, areas) if 0.6 * med < a < 1.5 * med]
-        if len(best) >= 9:                      # enough cubes to infer the lattice
-            rows = _fit_lattice(best)
+        if len(best) >= n * n // 2 + 1:        # enough cubes to infer the lattice
+            rows = _fit_lattice(best, n)
             if rows is not None:
                 return rows, True
-    step = WARP / 4
+    step = WARP / n
     rows = [[(int(c * step), int(r * step), int((c + 1) * step), int((r + 1) * step))
-             for c in range(4)] for r in range(4)]
+             for c in range(n)] for r in range(n)]
     return rows, False
 
 
@@ -284,18 +287,19 @@ def read_cube(cell_bgr):
                 turns=turns if turns is not None else best[2])
 
 
-def read_grid(image):
-    """image: numpy BGR array. Returns dict(grid, detail, warped, cubes_found)."""
+def read_grid(image, n=4):
+    """image: numpy BGR array; n: board size (4 = Boggle, 5 = Big Boggle).
+    Returns dict(grid, detail, warped, boxes, n, tray_found, cubes_found)."""
     h, w = image.shape[:2]
     if max(h, w) > 1400:
         s = 1400 / max(h, w)
         image = cv2.resize(image, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
     warped, tray_found = straighten(image)
-    boxes, cubes_found = find_cubes(warped)
+    boxes, cubes_found = find_cubes(warped, n)
     grid, detail = [], []
-    for r in range(4):
+    for r in range(n):
         row = []
-        for c in range(4):
+        for c in range(n):
             x0, y0, x1, y1 = boxes[r][c]
             pad = int(0.06 * (x1 - x0))
             crop = warped[max(0, y0 - pad):y1 + pad, max(0, x0 - pad):x1 + pad]
@@ -304,18 +308,20 @@ def read_grid(image):
             detail.append(res)
             row.append(res["letter"])
         grid.append(row)
-    return dict(grid=grid, detail=detail, warped=warped, boxes=boxes,
+    return dict(grid=grid, detail=detail, warped=warped, boxes=boxes, n=n,
                 tray_found=tray_found, cubes_found=cubes_found)
 
 
 def annotate(result):
     """Warped board with the detected letters drawn on it."""
     img = result["warped"].copy()
-    for r in range(4):
-        for c in range(4):
+    n = result.get("n", 4)
+    scale = 4 / n
+    for r in range(n):
+        for c in range(n):
             x0, y0, x1, y1 = result["boxes"][r][c]
             cv2.rectangle(img, (x0, y0), (x1, y1), (0, 140, 255), 3)
-            d = result["detail"][r * 4 + c]
-            cv2.putText(img, d["letter"] or "?", (x0 + 8, y0 + 44),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+            d = result["detail"][r * n + c]
+            cv2.putText(img, d["letter"] or "?", (x0 + 8, y0 + int(44 * max(scale, 0.8))),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5 * max(scale, 0.8), (0, 0, 255), 4)
     return img

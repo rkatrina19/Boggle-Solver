@@ -1,6 +1,6 @@
 # Boggle Photo Solver
 
-Upload a photo of a Boggle board → the app reads the 16 cubes (even when letters are
+Upload a photo of a Boggle board (classic 4x4 or Big Boggle 5x5) → the app reads the 16 cubes (even when letters are
 sideways or upside down), lets you fix any misread letter, then finds every word and
 scores it with the official Boggle points.
 
@@ -37,8 +37,14 @@ Command-line version (no browser):
 ```bash
 python solve_photo.py sample_photo.png
 python solve_photo.py my_board.jpg --csv words.csv --debug-image what_it_saw.png
+python solve_photo.py big_board.jpg --size 5 --min-len 4   # Big Boggle 5x5
 python solve_photo.py --grid "GAUT PRMR DOLA ESIC"      # skip the photo, type the letters (Q = Qu)
 ```
+
+## Board size
+Choose **4 x 4 (Boggle)** or **5 x 5 (Big Boggle)** in the sidebar before uploading. The
+minimum word length defaults to 3 for 4x4 and 4 for 5x5 (Big Boggle is usually played with
+4+ letters); you can change it. From the command line use `--size 5 --min-len 4`.
 
 ## Tips for a good photo
 - Shoot from straight above with the whole dark tray in the frame.
@@ -68,9 +74,9 @@ python solve_photo.py --grid "GAUT PRMR DOLA ESIC"      # skip the photo, type t
    weights) in all four 90° rotations, using shape correlation plus a skeleton-distance
    check (this separates look-alikes such as R and P).
 
-Tested on 40 randomly generated, tilted/perspective photos (640 cubes, all letters
-including Qu, M, W, Z): 100% of cubes read correctly. Real photos vary, so the
-correction table is there for the occasional miss.
+Tested on randomly generated, tilted/perspective photos (25 boards each, all letters
+including Qu, M, W, Z): 100% of cubes read correctly for both 4x4 (400 cubes) and 5x5
+(625 cubes). Real photos vary, so the correction table is there for the occasional miss.
 
 ## Files
 - `app.py` – Streamlit app
@@ -78,4 +84,5 @@ correction table is there for the occasional miss.
 - `boggle_core.py` – solver and scoring (pandas)
 - `boggle_vision.py` – photo → grid
 - `enable1.txt` – word list · `fonts/` – fonts used to build letter templates
-- `sample_photo.png`, `sample_synthetic.png` – photos to try
+- `sample_photo.png`, `sample_synthetic.png`, `sample_5x5.png` – photos to try (4x4, 4x4, 5x5)
+- `tests/` – generates fake board photos and measures reading accuracy (`python tests/eval_reader.py 5 25`)

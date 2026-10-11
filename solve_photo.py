@@ -1,6 +1,7 @@
 """Command-line version:  python solve_photo.py board.jpg [--min-len 3] [--csv out.csv]
 
 Reads the board from the photo, prints the grid it saw, then every word with points.
+Big Boggle (5x5):  python solve_photo.py board.jpg --size 5 --min-len 4
 If a letter is wrong, override the grid:  --grid "GAUT PRMR DOLA ESIC"  (use Q for the Qu cube)
 """
 import argparse
@@ -17,7 +18,8 @@ import boggle_vision as vision
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("photo", nargs="?", help="photo of the board")
-    ap.add_argument("--grid", help='skip the photo: 4 rows of 4 letters, e.g. "GAUT PRMR DOLA ESIC"')
+    ap.add_argument("--grid", help='skip the photo: rows of letters, e.g. "GAUT PRMR DOLA ESIC" (Q = Qu)')
+    ap.add_argument("--size", type=int, choices=[4, 5], default=4, help="board size in the photo: 4 (Boggle) or 5 (Big Boggle)")
     ap.add_argument("--min-len", type=int, default=3)
     ap.add_argument("--csv", help="save the word list to this CSV file")
     ap.add_argument("--debug-image", help="save the annotated board to this file")
@@ -28,7 +30,7 @@ def main():
         grid = [["QU" if ch == "Q" else ch for ch in row] for row in rows]
     elif a.photo:
         img = ImageOps.exif_transpose(Image.open(a.photo)).convert("RGB")
-        res = vision.read_grid(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR))
+        res = vision.read_grid(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR), a.size)
         grid = res["grid"]
         if a.debug_image:
             cv2.imwrite(a.debug_image, vision.annotate(res))

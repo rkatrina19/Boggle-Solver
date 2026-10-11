@@ -26,16 +26,22 @@ def decode(file) -> np.ndarray:
 
 
 def to_df_grid(grid):
-    return pd.DataFrame(grid, columns=["1", "2", "3", "4"], index=["row 1", "row 2", "row 3", "row 4"])
+    n = len(grid)
+    return pd.DataFrame(grid, columns=[str(i + 1) for i in range(n)],
+                        index=[f"row {i + 1}" for i in range(n)])
 
 
 st.title("Boggle Photo Solver")
-st.caption("Upload a photo of a Boggle board (tilted or rotated letters are fine). "
+st.caption("Upload a photo of a Boggle board, 4x4 or 5x5 (tilted or rotated letters are fine). "
            "Check the grid it read, fix any mistakes, then solve.")
 
 with st.sidebar:
     st.header("Settings")
-    min_len = st.slider("Minimum word length", 3, 5, 3)
+    size_label = st.radio("Board size", ["4 x 4 (Boggle)", "5 x 5 (Big Boggle)"],
+                          help="Pick the size of the board in your photo.")
+    N = 5 if size_label.startswith("5") else 4
+    min_len = st.slider("Minimum word length", 3, 5, 3 if N == 4 else 4, key=f"minlen-{N}",
+                        help="Classic Boggle accepts 3+ letters; Big Boggle is usually played with 4+.")
     custom = st.file_uploader("Use my own word list (.txt, one word per line)", type=["txt"])
     st.markdown(
         "**Scoring**  \n3–4 letters = 1 pt · 5 = 2 · 6 = 3 · 7 = 5 · 8+ = 11  \n"
@@ -53,11 +59,11 @@ if photo is None:
             "and avoid glare on the cubes.")
     st.stop()
 
-key = f"{getattr(photo, 'name', 'camera')}-{photo.size}"
+key = f"{getattr(photo, 'name', 'camera')}-{photo.size}-{N}"
 if st.session_state.get("photo_key") != key:           # new photo -> read it
     st.session_state.photo_key = key
     with st.spinner("Reading the board..."):
-        st.session_state.result = vision.read_grid(decode(photo))
+        st.session_state.result = vision.read_grid(decode(photo), N)
     st.session_state.pop("solved", None)
 res = st.session_state.result
 
@@ -76,8 +82,8 @@ with c2:
 st.subheader("1 · Check the letters")
 st.caption("Edit any cell that is wrong (type **Qu** for the Qu cube). Row 1 is the top of the photo.")
 edited = st.data_editor(to_df_grid(res["grid"]), width="stretch", key=f"grid-{key}",
-                        column_config={c: st.column_config.TextColumn(c, max_chars=2)
-                                       for c in ["1", "2", "3", "4"]})
+                        column_config={str(i + 1): st.column_config.TextColumn(str(i + 1), max_chars=2)
+                                       for i in range(N)})
 
 shaky = [d for d in res["detail"] if not d["letter"] or d["score"] < 0.60]
 if shaky:
@@ -92,7 +98,7 @@ def clean(v):
 
 
 grid = [[clean(v) for v in row] for row in edited.values.tolist()]
-bad = [(r + 1, c + 1) for r in range(4) for c in range(4)
+bad = [(r + 1, c + 1) for r in range(N) for c in range(N)
        if not (len(grid[r][c]) == 1 and grid[r][c].isalpha()) and grid[r][c] != "QU"]
 
 st.subheader("2 · Solve")
