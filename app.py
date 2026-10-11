@@ -10,7 +10,7 @@ from PIL import Image, ImageOps
 import boggle_core as core
 import boggle_vision as vision
 
-st.set_page_config(page_title="Boggle Photo Solver", page_icon="🔤", layout="wide")
+st.set_page_config(page_title="Boggle Photo Solver", layout="wide")
 
 
 @st.cache_resource(show_spinner="Loading dictionary...")
@@ -29,7 +29,7 @@ def to_df_grid(grid):
     return pd.DataFrame(grid, columns=["1", "2", "3", "4"], index=["row 1", "row 2", "row 3", "row 4"])
 
 
-st.title("🔤 Boggle Photo Solver")
+st.title("Boggle Photo Solver")
 st.caption("Upload a photo of a Boggle board (tilted or rotated letters are fine). "
            "Check the grid it read, fix any mistakes, then solve.")
 

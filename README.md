@@ -4,11 +4,30 @@ Upload a photo of a Boggle board → the app reads the 16 cubes (even when lette
 sideways or upside down), lets you fix any misread letter, then finds every word and
 scores it with the official Boggle points.
 
-## Run it
+## Open it any time
+
+**Option 1: permanent link (recommended).** Host it free on Streamlit Community Cloud so it
+has a fixed web address that works from any device, with nothing running on your computer:
+
+1. Go to https://share.streamlit.io and sign in with GitHub.
+2. Click **Create app**, then **Deploy a public app from GitHub**.
+3. Repository: `rkatrina19/Boggle-Solver` · Branch: `main` · Main file path: `app.py`.
+4. Choose a custom subdomain (for example `boggle-solver`) and click **Deploy**.
+
+Your app will live at `https://<your-subdomain>.streamlit.app`. Bookmark it. Apps that go
+unused for a while are put to sleep; open the link and press "Yes, get this app back up!".
+Every push to `main` updates the live app automatically.
+
+**Option 2: one-click on your computer.** Download or clone this repo, then double-click
+`run_boggle.command` (Mac; if blocked, right-click > Open) or `run_boggle.bat` (Windows).
+It installs the packages on first run and opens the app in your browser. The link
+(`http://localhost:8501`) only works while that window stays open.
+
+**Option 3: terminal.**
 
 ```bash
-pip install -r requirements.txt
-streamlit run app.py          # opens in your browser
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
 
 No separate OCR program is needed. Python 3.10+.
