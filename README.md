@@ -46,6 +46,15 @@ Choose **4 x 4 (Boggle)** or **5 x 5 (Big Boggle)** in the sidebar before upload
 minimum word length defaults to 3 for 4x4 and 4 for 5x5 (Big Boggle is usually played with
 4+ letters); you can change it. From the command line use `--size 5 --min-len 4`.
 
+## Your own word list
+In the sidebar, **Use my own word list** accepts `.txt`, `.csv` or `.xlsx`:
+- Put the words in any column, on any sheet; several words in one cell (separated by spaces,
+  commas or semicolons) also work.
+- A first row labelled `word`, `words`, `term`, `list` and similar is skipped as a header.
+- Only purely alphabetic entries are used; numbers and punctuation are ignored. Keep the file
+  to words only, since any other text in it would be read as words too.
+- When a list is uploaded it replaces the built-in dictionary for that solve.
+
 ## Tips for a good photo
 - Shoot from straight above with the whole dark tray in the frame.
 - Avoid glare and shadows across the cubes; a plain background helps.
@@ -59,8 +68,8 @@ minimum word length defaults to 3 for 4x4 and 4 for 5x5 (Big Boggle is usually p
 - Qu is one cube but counts as two letters.
 - Points: 3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11.
 - Dictionary: ENABLE (standard Scrabble list: plurals and verb forms, no proper nouns).
-  It is generous, so a few obscure words are accepted. You can supply your own list in
-  the sidebar. In a real game, words that other players also find are crossed off for
+  It is generous, so a few obscure words are accepted. You can upload your own word list in
+  the sidebar (see below). In a real game, words that other players also find are crossed off for
   everyone, so your actual score will be lower than the total shown.
 
 ## How the photo reading works (`boggle_vision.py`)

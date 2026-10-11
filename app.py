@@ -85,7 +85,8 @@ with st.sidebar:
     st.header("Settings")
     min_len = st.slider("Minimum word length", 3, 5, 3 if N == 4 else 4, key=f"minlen-{N}",
                         help="Classic Boggle accepts 3+ letters; Big Boggle is usually played with 4+.")
-    custom = st.file_uploader("Use my own word list (.txt, one word per line)", type=["txt"])
+    custom = st.file_uploader("Use my own word list", type=["txt", "csv", "xlsx"],
+                              help="Upload .txt, .csv or .xlsx. Words can be in any column or sheet, one or several per cell.")
     st.markdown(
         "**Scoring**  \n3–4 letters = 1 pt · 5 = 2 · 6 = 3 · 7 = 5 · 8+ = 11  \n"
         "Qu counts as two letters.")
@@ -153,7 +154,15 @@ if bad:
 
 if st.button("Find all words", type="primary"):
     if custom is not None:
-        words = {w.strip().lower() for w in io.TextIOWrapper(custom, encoding="utf-8") if w.strip().isalpha()}
+        try:
+            words = core.parse_wordlist(custom.name, custom.getvalue())
+        except Exception as exc:
+            st.error(f"Couldn't read that word list ({exc}). Try .txt, .csv or .xlsx with one word per cell.")
+            st.stop()
+        if not words:
+            st.error("No words found in that file. Put one word per cell (or per line).")
+            st.stop()
+        st.toast(f"Using your word list: {len(words):,} words")
         prefixes = core.build_prefixes(words)
     else:
         words, prefixes = get_dictionary()
