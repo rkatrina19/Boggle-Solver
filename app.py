@@ -54,6 +54,17 @@ st.markdown(f"""
 .dots {{ display:grid; gap:9px; }}
 .dots i {{ border-radius:50%; background: rgba(128,128,128,.38); display:block; aspect-ratio:1; }}
 .card.on .dots i {{ background: {ACCENT}; }}
+div[class*="st-key-card-"] {{ position: relative; padding-bottom: 1rem; }}   /* markdown trims 1rem; keep the overlay covering the whole card */
+div[class*="st-key-card-"] div[data-testid="stElementContainer"]:has(button),
+div[class*="st-key-card-"] div[data-testid="stElementContainer"]:has(button) > div,
+div[class*="st-key-card-"] button {{
+    position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+    min-width: 0 !important; margin: 0 !important; padding: 0 !important; }}
+div[class*="st-key-card-"] div[data-testid="stElementContainer"]:has(button) {{ z-index: 3; }}
+div[class*="st-key-card-"] button {{ opacity: 0; cursor: pointer; }}
+div[class*="st-key-card-"]:hover .card {{ border-color: {ACCENT}; transform: translateY(-2px);
+    box-shadow: 0 8px 24px {ACCENT}26; }}
+div[class*="st-key-card-"]:has(button:focus-visible) .card {{ outline: 3px solid {ACCENT}; outline-offset: 2px; }}
 .rule {{ height:1px; background: rgba(128,128,128,.22); margin: 1.4rem 0 .6rem; }}
 </style>
 <div class="hero">
@@ -72,14 +83,14 @@ def pick_mode(m):
 
 
 MODES = {
-    "solo": ("Just me", "Boggle checker", "Find every word or score your list", 1, "46px"),
+    "solo": ("Just me", "Boggle Checker", "Find every word or score your list", 1, "46px"),
     "multi": ("Multiplayer", "2 to 4 players", "Check each other's words, shared ones are crossed off", 4, "84px"),
 }
 _, mid0, _ = st.columns([1, 3, 1])
 for col, (m, (name, sub, blurb, dots, width)) in zip(mid0.columns(2, gap="large"), MODES.items()):
     on = st.session_state.game_mode == m
     cols_css = "1fr 1fr" if dots == 4 else "1fr"
-    with col:
+    with col, st.container(key=f"card-mode-{m}"):         # the whole card is the button
         st.markdown(
             f'<div class="card{" on" if on else ""}">'
             f'<div class="icon-wrap"><div class="dots" style="grid-template-columns:{cols_css};width:{width}">'
@@ -87,8 +98,7 @@ for col, (m, (name, sub, blurb, dots, width)) in zip(mid0.columns(2, gap="large"
             f'<div class="name">{name}</div><div class="sub">{sub}</div>'
             f'<div class="sub" style="font-size:.78rem">{blurb}</div></div>',
             unsafe_allow_html=True)
-        st.button("Selected" if on else f"Choose {name}", key=f"mode-{m}", on_click=pick_mode, args=(m,),
-                  type="primary" if on else "secondary", width="stretch", disabled=on)
+        st.button(f"{name} {sub}", key=f"mode-{m}", on_click=pick_mode, args=(m,))
 mode = st.session_state.game_mode
 
 st.markdown('<div class="pick-title">Step 2 &middot; Choose your board size</div>', unsafe_allow_html=True)
@@ -98,19 +108,18 @@ def pick(n):
     st.session_state.board_n = n
 
 
-BOARDS = {4: ("4 x 4", "Classic Boggle", "16 cubes"), 5: ("5 x 5", "Big Boggle", "25 cubes")}
+BOARDS = {4: ("4x4", "Classic Boggle", "16 cubes"), 5: ("5x5", "Big Boggle", "25 cubes")}
 _, mid, _ = st.columns([1, 3, 1])
 card_cols = mid.columns(2, gap="large")
 for col, (n, (name, sub, cubes)) in zip(card_cols, BOARDS.items()):
     on = st.session_state.board_n == n
-    with col:
+    with col, st.container(key=f"card-board-{n}"):        # the whole card is the button
         st.markdown(
             f'<div class="card{" on" if on else ""}">'
             f'<div class="mini" style="grid-template-columns:repeat({n},1fr)">{"<i></i>" * (n * n)}</div>'
             f'<div class="name">{name}</div><div class="sub">{sub} &middot; {cubes}</div></div>',
             unsafe_allow_html=True)
-        st.button("Selected" if on else f"Use {name}", key=f"pick-{n}", on_click=pick, args=(n,),
-                  type="primary" if on else "secondary", width="stretch", disabled=on)
+        st.button(f"{name} {sub}", key=f"pick-{n}", on_click=pick, args=(n,))
 N = st.session_state.board_n
 
 st.markdown('<div class="rule"></div>', unsafe_allow_html=True)
