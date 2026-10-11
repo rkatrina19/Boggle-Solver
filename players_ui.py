@@ -123,7 +123,7 @@ def _match(result_id: int, board: pd.DataFrame):
                     text=f"{' / '.join(leaders)} lead with {leader_score} of {target} points")
 
 
-def render(grid, min_len, get_dictionary):
+def render(grid, min_len, get_dictionary, get_validator=None, mw_note=None):
     st.caption("Each player writes down the words they found. The app checks every word against the board and "
                "the dictionary, then crosses off any word that appears on more than one list, as in the real game.")
     count = st.radio("Number of players", [2, 3, 4], horizontal=True, format_func=lambda n: f"{n} players",
@@ -138,12 +138,14 @@ def render(grid, min_len, get_dictionary):
             st.error("Enter words for at least two players to compare.")
         else:
             dictionary, prefixes = get_dictionary()
-            tables, board, shared = core.score_players(grid, {n: players[n] for n in ready}, dictionary, min_len)
+            validator = get_validator() if get_validator else dictionary
+            tables, board, shared = core.score_players(grid, {n: players[n] for n in ready}, validator, min_len)
             everything = {w for n in ready for w in players[n]}
             full = core.solve(grid, dictionary, prefixes, min_len)
             st.session_state.play = dict(
                 id=st.session_state.get("play_id", 0) + 1, tables=tables, board=board, shared=shared,
-                unfound=full[~full.word.isin(everything)].reset_index(drop=True), possible=int(full.points.sum()))
+                unfound=full[~full.word.isin(everything)].reset_index(drop=True), possible=int(full.points.sum()),
+                note=mw_note(validator) if mw_note else None)
             st.session_state.play_id = st.session_state.play["id"]
 
     res = st.session_state.get("play")
@@ -151,8 +153,10 @@ def render(grid, min_len, get_dictionary):
         return
     st.markdown("### Results")
     _leaderboard(res["board"])
-    st.caption(f"Possible on this board: {res['possible']} points. Words crossed off lose their points for every "
-               "player who listed them.")
+    st.caption(f"Possible on this board: {res['possible']} points (built-in list). Words crossed off lose their "
+               "points for every player who listed them.")
+    if res.get("note"):
+        st.caption(res["note"])
 
     tabs = st.tabs(list(res["tables"]) + ["Shared words", "Nobody found"])
     for tab, (name, table) in zip(tabs, res["tables"].items()):

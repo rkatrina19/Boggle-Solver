@@ -1,5 +1,6 @@
 """Boggle photo solver  -  run with:  streamlit run app.py"""
 import io
+import os
 
 import cv2
 import numpy as np
@@ -49,16 +50,48 @@ st.markdown(f"""
 .card.on .mini i {{ background: {ACCENT}; }}
 .card .name {{ font-size: 1.25rem; font-weight: 800; }}
 .card .sub {{ font-size: .88rem; opacity: .65; margin-bottom: .2rem; }}
+.icon-wrap {{ height:116px; display:flex; align-items:center; justify-content:center; margin-bottom:.75rem; }}
+.dots {{ display:grid; gap:9px; }}
+.dots i {{ border-radius:50%; background: rgba(128,128,128,.38); display:block; aspect-ratio:1; }}
+.card.on .dots i {{ background: {ACCENT}; }}
 .rule {{ height:1px; background: rgba(128,128,128,.22); margin: 1.4rem 0 .6rem; }}
 </style>
 <div class="hero">
   <h1>Boggle Photo Solver</h1>
   <p>Snap or upload a photo of your board. We read the letters and find every word.</p>
 </div>
-<div class="pick-title">Step 1 &middot; Choose your board size</div>
+<div class="pick-title">Step 1 &middot; How are you playing?</div>
 """, unsafe_allow_html=True)
 
 st.session_state.setdefault("board_n", 4)
+st.session_state.setdefault("game_mode", "solo")
+
+
+def pick_mode(m):
+    st.session_state.game_mode = m
+
+
+MODES = {
+    "solo": ("Just me", "Boggle checker", "Find every word or score your list", 1, "46px"),
+    "multi": ("Multiplayer", "2 to 4 players", "Check each other's words, shared ones are crossed off", 4, "84px"),
+}
+_, mid0, _ = st.columns([1, 3, 1])
+for col, (m, (name, sub, blurb, dots, width)) in zip(mid0.columns(2, gap="large"), MODES.items()):
+    on = st.session_state.game_mode == m
+    cols_css = "1fr 1fr" if dots == 4 else "1fr"
+    with col:
+        st.markdown(
+            f'<div class="card{" on" if on else ""}">'
+            f'<div class="icon-wrap"><div class="dots" style="grid-template-columns:{cols_css};width:{width}">'
+            f'{"<i></i>" * dots}</div></div>'
+            f'<div class="name">{name}</div><div class="sub">{sub}</div>'
+            f'<div class="sub" style="font-size:.78rem">{blurb}</div></div>',
+            unsafe_allow_html=True)
+        st.button("Selected" if on else f"Choose {name}", key=f"mode-{m}", on_click=pick_mode, args=(m,),
+                  type="primary" if on else "secondary", width="stretch", disabled=on)
+mode = st.session_state.game_mode
+
+st.markdown('<div class="pick-title">Step 2 &middot; Choose your board size</div>', unsafe_allow_html=True)
 
 
 def pick(n):
@@ -86,21 +119,62 @@ with st.sidebar:
     st.header("Settings")
     min_len = st.slider("Minimum word length", 3, 5, 3 if N == 4 else 4, key=f"minlen-{N}",
                         help="Classic Boggle accepts 3+ letters; Big Boggle is usually played with 4+.")
-    custom = st.file_uploader("Use my own word list", type=["txt", "csv", "xlsx"],
-                              help="Upload .txt, .csv or .xlsx. Words can be in any column or sheet, one or several per cell.")
-    list_mode = "dict"
-    if custom is not None:
-        list_mode = "score" if st.radio(
-            "What is this list?",
-            ["The words I found (score them)", "A dictionary to search with"],
-            help="Score: checks each of your words against the board and the dictionary and "
-                 "totals your points. Dictionary: finds every board word that appears in your list."
-        ).startswith("The words") else "dict"
+    st.markdown("**Check words against**")
+    word_source = st.radio("Dictionary", ["Built-in word list", "Merriam-Webster (live)"],
+                           label_visibility="collapsed",
+                           help="Built-in: the ENABLE Scrabble word list, works offline. Merriam-Webster: each word is "
+                                "looked up in Merriam-Webster's current Collegiate Dictionary through their free API "
+                                "(you need your own key).")
+    mw_key = ""
+    if word_source.startswith("Merriam"):
+        try:
+            saved = st.secrets.get("MW_API_KEY", "")
+        except Exception:                                    # no secrets file
+            saved = ""
+        mw_key = st.text_input("Merriam-Webster API key", value=saved or os.environ.get("MW_API_KEY", ""),
+                               type="password", help="Free for non-commercial use at dictionaryapi.com "
+                               "(Collegiate Dictionary, up to 1,000 lookups a day).").strip()
+        st.caption("Word checks powered by [Merriam-Webster's Collegiate Dictionary API](https://dictionaryapi.com). "
+                   "Words that can't be checked fall back to the built-in list.")
+    custom, list_mode = None, "dict"
+    if mode == "solo":
+        custom = st.file_uploader("Use my own word list", type=["txt", "csv", "xlsx"],
+                                  help="Upload .txt, .csv or .xlsx. Words can be in any column or sheet, one or several per cell.")
+        if custom is not None:
+            list_mode = "score" if st.radio(
+                "What is this list?",
+                ["The words I found (score them)", "A dictionary to search with"],
+                help="Score: checks each of your words against the board and the dictionary and "
+                     "totals your points. Dictionary: finds every board word that appears in your list."
+            ).startswith("The words") else "dict"
     st.markdown(
         "**Scoring**  \n3–4 letters = 1 pt · 5 = 2 · 6 = 3 · 7 = 5 · 8+ = 11  \n"
         "Qu counts as two letters.")
 
-st.markdown('<div class="pick-title" style="margin-top:.4rem">Step 2 &middot; Add your photo</div>',
+def get_validator():
+    """The word checker to use for validity: Merriam-Webster (live) if chosen and a key is set, else the built-in set."""
+    base, _ = get_dictionary()
+    if word_source.startswith("Merriam"):
+        if mw_key:
+            return core.MerriamWebsterChecker(mw_key, fallback=base)
+        st.sidebar.warning("Enter your Merriam-Webster API key to use it. Using the built-in list for now.")
+    return base
+
+
+def mw_note(checker):
+    """One-line summary of what a Merriam-Webster check did (None for the built-in list)."""
+    if not isinstance(checker, core.MerriamWebsterChecker):
+        return None
+    note = (f"Checked with Merriam-Webster: {checker.api_calls} new lookups, {checker.cache_hits} reused from earlier "
+            f"checks, about {checker.remaining()} lookups left today.")
+    if checker.fallback_words:
+        shown = ", ".join(sorted(set(checker.fallback_words))[:8])
+        note += (f" {len(set(checker.fallback_words))} word(s) could not be checked ({checker.last_error}) and used the "
+                 f"built-in list instead: {shown}.")
+    return note
+
+
+st.markdown('<div class="pick-title" style="margin-top:.4rem">Step 3 &middot; Add your photo</div>',
             unsafe_allow_html=True)
 tab_up, tab_cam = st.tabs(["Upload a photo", "Use the camera"])
 with tab_up:
@@ -134,7 +208,7 @@ with c2:
     elif not res["cubes_found"]:
         st.warning("Couldn't locate each cube precisely - the board was split evenly instead.")
 
-st.subheader("Step 3 · Check the letters")
+st.subheader("Step 4 · Check the letters")
 st.caption("Edit any cell that is wrong (type **Qu** for the Qu cube). Row 1 is the top of the photo.")
 edited = st.data_editor(to_df_grid(res["grid"]), width="stretch", key=f"grid-{key}",
                         column_config={str(i + 1): st.column_config.TextColumn(str(i + 1), max_chars=2)
@@ -156,13 +230,12 @@ grid = [[clean(v) for v in row] for row in edited.values.tolist()]
 bad = [(r + 1, c + 1) for r in range(N) for c in range(N)
        if not (len(grid[r][c]) == 1 and grid[r][c].isalpha()) and grid[r][c] != "QU"]
 
-st.subheader("Step 4 · Solve or play")
+st.subheader("Step 5 · Solve and score" if mode == "solo" else "Step 5 · Play with friends")
 if bad:
     st.error(f"Each cell needs one letter (or Qu). Fix: {bad}")
     st.stop()
 
-tab_solo, tab_play = st.tabs(["Solve or score my words", "Play with friends (2–4 players)"])
-with tab_solo:
+if mode == "solo":
     score_mode = custom is not None and list_mode == "score"
     if st.button("Score my words" if score_mode else "Find all words", type="primary"):
         entries = None
@@ -176,16 +249,30 @@ with tab_solo:
                 st.error("No words found in that file. Put one word per cell (or per line).")
                 st.stop()
         dictionary, dict_prefixes = get_dictionary()
+        validator = get_validator()
         st.session_state.mine = None
+        st.session_state.mw_note = None
         if score_mode:                                   # score the player's words, keep the full list for comparison
             st.session_state.solved = core.solve(grid, dictionary, dict_prefixes, min_len)
-            st.session_state.mine = core.score_words(grid, entries, dictionary, min_len)
-        elif entries is not None:                        # custom dictionary
+            st.session_state.mine = core.score_words(grid, entries, validator, min_len)
+            st.session_state.mw_note = mw_note(validator)
+        elif entries is not None:                        # custom dictionary (Merriam-Webster setting not used)
             words = set(entries)
             st.toast(f"Using your word list: {len(words):,} words")
             st.session_state.solved = core.solve(grid, words, core.build_prefixes(words), min_len)
         else:
-            st.session_state.solved = core.solve(grid, dictionary, dict_prefixes, min_len)
+            found = core.solve(grid, dictionary, dict_prefixes, min_len)
+            if isinstance(validator, core.MerriamWebsterChecker):
+                need = validator.pending(found.word)
+                if need <= validator.remaining():
+                    with st.spinner(f"Checking {len(found)} words with Merriam-Webster..."):
+                        kept = validator.filter(found)
+                    st.session_state.mw_note = mw_note(validator) + f" {len(found) - len(kept)} candidate words were not accepted."
+                    found = kept
+                else:
+                    st.session_state.mw_note = (f"Not enough Merriam-Webster lookups left today ({validator.remaining()}) "
+                                                f"to check {need} words, so the built-in list is shown unchecked.")
+            st.session_state.solved = found
 
     df = st.session_state.get("solved")
     mine = st.session_state.get("mine")
@@ -212,7 +299,9 @@ with tab_solo:
         m3.metric("Possible on this board", possible)
         m4.metric("Share of possible", f"{my_score / possible:.0%}" if possible else "-")
         st.caption("Words that another player also found are crossed off for everyone in a real game, "
-                   "so subtract those from your score.")
+                   "so subtract those from your score. 'Possible' and 'missed' words come from the built-in list.")
+        if st.session_state.get("mw_note"):
+            st.caption(st.session_state.mw_note)
 
         palette = {"Counts": "rgba(46,160,67,.22)"}
         styled = mine.style.apply(
@@ -240,6 +329,8 @@ with tab_solo:
         m2.metric("Total points", int(df.points.sum()))
         m3.metric("Longest word", df.word.iloc[0] if len(df) else "-")
         st.caption("Remember: any word another player also finds is crossed off for everyone.")
+        if st.session_state.get("mw_note"):
+            st.caption(st.session_state.mw_note)
 
         left, right = st.columns([1, 2])
         with left:
@@ -252,5 +343,5 @@ with tab_solo:
                            "boggle_words.xlsx", XLSX)
         d2.download_button("Download CSV", df.to_csv(index=False), "boggle_words.csv", "text/csv")
 
-with tab_play:
-    players_ui.render(grid, min_len, get_dictionary)
+else:
+    players_ui.render(grid, min_len, get_dictionary, get_validator, mw_note)

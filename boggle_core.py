@@ -6,8 +6,12 @@ Rules (from the official instructions):
   * the Qu cube counts as two letters
   * scoring: 3-4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11
 """
+import datetime
 import io
+import json
 import re
+import urllib.parse
+import urllib.request
 from pathlib import Path
 import pandas as pd
 
@@ -227,3 +231,111 @@ def score_players(grid, players: dict, dictionary, min_len=3):
          for w, n in sorted(shared_words.items(), key=lambda kv: (-len(kv[0]), kv[0]))],
         columns=["word", "letters", "players", "points lost each"])
     return tables, board, shared
+
+
+# ---------------------------------------------------------------------------
+# Optional live check against Merriam-Webster's Collegiate Dictionary API
+# (free, non-commercial use, needs your own key from https://dictionaryapi.com)
+# ---------------------------------------------------------------------------
+MW_URL = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/{word}?key={key}"
+# entries that are not ordinary playable words
+MW_EXCLUDED_FL = {"abbreviation", "prefix", "suffix", "combining form", "symbol", "biographical name",
+                  "geographical name", "trademark"}
+_MW_CACHE = {}                    # word -> bool; lives as long as the server process
+_MW_USAGE = {"day": None, "count": 0}
+
+
+class MWError(Exception):
+    """The Merriam-Webster service could not answer (bad key, network, quota)."""
+
+
+def mw_entries_valid(word: str, payload) -> bool:
+    """Is `word` a playable word according to a Collegiate API response?
+
+    Found words come back as a list of entry objects; unknown words come back as an empty
+    list or a list of suggestion strings. A word is valid when it is one of an ordinary
+    (main-section) entry's `stems`, which covers plurals, verb forms and variants. Names,
+    abbreviations, prefixes/suffixes and idioms are rejected, as in Boggle and Scrabble.
+    Proper nouns are rejected because their stems keep the capital letter.
+    """
+    if not isinstance(payload, list):
+        return False
+    word = word.lower()
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue                                     # a suggestion string
+        meta = entry.get("meta") or {}
+        if meta.get("section", "alpha") != "alpha":
+            continue
+        if str(entry.get("fl", "")).lower() in MW_EXCLUDED_FL:
+            continue
+        if word in (meta.get("stems") or []):            # exact, case-sensitive match
+            return True
+    return False
+
+
+def _mw_fetch(word: str, key: str, timeout: float = 8.0):
+    """One HTTP call to the Collegiate API; returns the decoded JSON."""
+    url = MW_URL.format(word=urllib.parse.quote(word), key=urllib.parse.quote(key))
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise MWError(f"network error ({exc})") from exc
+    try:
+        return json.loads(raw)
+    except ValueError as exc:                            # e.g. "Invalid API key. Not subscribed ..."
+        raise MWError(raw.strip()[:120] or "unreadable reply") from exc
+
+
+class MerriamWebsterChecker:
+    """Set-like object: `word in checker` asks Merriam-Webster (cached; falls back to the
+    built-in list when the service can't answer or the daily quota is nearly used up)."""
+
+    def __init__(self, api_key, fallback, daily_limit=1000, reserve=50):
+        self.key, self.fallback = api_key, fallback
+        self.limit, self.reserve = daily_limit, reserve
+        self.api_calls = self.cache_hits = 0
+        self.fallback_words, self.last_error = [], ""
+
+    # -- quota -------------------------------------------------------------
+    @staticmethod
+    def _today():
+        return datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+
+    def used_today(self):
+        return _MW_USAGE["count"] if _MW_USAGE["day"] == self._today() else 0
+
+    def remaining(self):
+        return max(0, self.limit - self.reserve - self.used_today())
+
+    def pending(self, words):
+        """How many of `words` still need an API call."""
+        return len({w.lower() for w in words if w.lower() not in _MW_CACHE})
+
+    # -- lookups -----------------------------------------------------------
+    def __contains__(self, word):
+        word = str(word).lower()
+        if word in _MW_CACHE:
+            self.cache_hits += 1
+            return _MW_CACHE[word]
+        if not self.remaining():
+            self.last_error = "daily limit reached"
+            self.fallback_words.append(word)
+            return word in self.fallback
+        try:
+            payload = _mw_fetch(word, self.key)
+        except MWError as exc:
+            self.last_error = str(exc)
+            self.fallback_words.append(word)
+            return word in self.fallback
+        if _MW_USAGE["day"] != self._today():
+            _MW_USAGE.update(day=self._today(), count=0)
+        _MW_USAGE["count"] += 1
+        self.api_calls += 1
+        _MW_CACHE[word] = valid = mw_entries_valid(word, payload)
+        return valid
+
+    def filter(self, df):
+        """Keep only the rows of a word table (column 'word') that Merriam-Webster accepts."""
+        return df[[w in self for w in df["word"]]].reset_index(drop=True)

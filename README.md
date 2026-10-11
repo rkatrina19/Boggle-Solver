@@ -63,8 +63,38 @@ In the sidebar, **Use my own word list** accepts `.txt`, `.csv` or `.xlsx`:
 - In a real game, words another player also found are crossed off for everyone, so subtract
   those from your score.
 
+## Just me or multiplayer
+Step 1 asks how you are playing: **Just me** (a Boggle checker: find every word, or score your own
+list) or **Multiplayer** (2 to 4 players check each other's words). The rest of the page shows
+only the tools for that choice.
+
+## Checking words with Merriam-Webster
+The built-in list is ENABLE, not Merriam-Webster. Merriam-Webster's dictionary is proprietary and
+there is no downloadable word list (the official Scrabble list built on it, NWL2023, is licensed
+by NASPA). What the app *can* do is look words up in Merriam-Webster's current Collegiate
+Dictionary through their free API:
+
+1. Get a free key at https://dictionaryapi.com (choose the *Collegiate Dictionary* reference).
+2. In the sidebar, set **Check words against** to **Merriam-Webster (live)** and paste your key.
+   To avoid pasting it each time, save it as `MW_API_KEY`: in Streamlit Cloud under
+   *App settings > Secrets* (`MW_API_KEY = "your-key"`), or locally in `.streamlit/secrets.toml`
+   (this file is git-ignored) or as an environment variable.
+
+How it is used: a word counts if it is a regular (main-section) entry or one of its listed forms
+(plurals, verb forms, variants). Names, abbreviations, prefixes/suffixes and idioms do not count.
+Results are cached while the app runs. **Score my words** and **Multiplayer** look up the words
+that were actually written down. **Find all words** checks the built-in list's candidates (about
+200 lookups for a typical 4x4 board). "Possible", "missed" and "nobody found" lists always come from
+the built-in list. If a word can't be checked (bad key, no connection, daily limit), the built-in
+list is used for it and the app says so.
+
+Limits from Merriam-Webster's terms: free for **non-commercial** use only, 1,000 lookups per key per
+day (shared by everyone using your hosted app), and apps must display the Merriam-Webster logo, so add
+it from your developer account if you publish the app. This feature needs internet access and has been
+tested here with simulated responses; try it once with your own key.
+
 ## Play with friends (2 to 4 players)
-In Step 4, open the **Play with friends** tab:
+Choose **Multiplayer** in Step 1, then in Step 5:
 1. Pick 2, 3 or 4 players and type each name.
 2. Each player types or pastes the words they found (one per line or separated by commas),
    or uploads a `.txt`, `.csv` or `.xlsx` list. Both can be combined.
@@ -90,7 +120,8 @@ score (the instructions suggest 50 or 100) and announces who reaches it first.
   no cube used twice in one word.
 - Qu is one cube but counts as two letters.
 - Points: 3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11.
-- Dictionary: ENABLE (standard Scrabble list: plurals and verb forms, no proper nouns).
+- Dictionary: the built-in ENABLE Scrabble list (plurals and verb forms, no proper nouns), or, optionally,
+  a live check against Merriam-Webster (see below).
   It is generous, so a few obscure words are accepted. You can upload your own word list in
   the sidebar (see below). In a real game, words that other players also find are crossed off for
   everyone, so your actual score will be lower than the total shown.
