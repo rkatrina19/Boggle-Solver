@@ -63,6 +63,21 @@ In the sidebar, **Use my own word list** accepts `.txt`, `.csv` or `.xlsx`:
 - In a real game, words another player also found are crossed off for everyone, so subtract
   those from your score.
 
+## Play with friends (2 to 4 players)
+In Step 4, open the **Play with friends** tab:
+1. Pick 2, 3 or 4 players and type each name.
+2. Each player types or pastes the words they found (one per line or separated by commas),
+   or uploads a `.txt`, `.csv` or `.xlsx` list. Both can be combined.
+3. Click **Compare lists and score**. The app checks every word against the board and the
+   dictionary, then applies the real Boggle rule: any word that appears on more than one
+   player's list is crossed off for everyone and scores nothing.
+
+You get a ranked leaderboard (ties share a rank), a table per player with the status of every
+word (*Counts*, *Crossed off (shared)*, *Not on the board*, *Not a dictionary word*,
+*Too short*, *Duplicate*), the list of shared words, the board words nobody found, and an
+Excel download. **Match** keeps a running total over several rounds with an optional target
+score (the instructions suggest 50 or 100) and announces who reaches it first.
+
 ## Tips for a good photo
 - Shoot from straight above with the whole dark tray in the frame.
 - Avoid glare and shadows across the cubes; a plain background helps.
@@ -98,7 +113,8 @@ including Qu, M, W, Z): 100% of cubes read correctly for both 4x4 (400 cubes) an
 ## Files
 - `app.py` – Streamlit app
 - `solve_photo.py` – command-line version
-- `boggle_core.py` – solver and scoring (pandas)
+- `boggle_core.py` – solver and scoring, solo and multiplayer (pandas)
+- `players_ui.py` – the multiplayer tab
 - `boggle_vision.py` – photo → grid
 - `enable1.txt` – word list · `fonts/` – fonts used to build letter templates
 - `sample_photo.png`, `sample_synthetic.png`, `sample_5x5.png` – photos to try (4x4, 4x4, 5x5)

@@ -179,3 +179,51 @@ def score_words(grid, entries, dictionary, min_len=3) -> pd.DataFrame:
                      "points": points(len(w)) if status == "Counts" else 0,
                      "path (row,col)": " -> ".join(f"({r+1},{c+1})" for r, c in path) if path else ""})
     return pd.DataFrame(rows, columns=["word", "letters", "status", "points", "path (row,col)"])
+
+
+def score_players(grid, players: dict, dictionary, min_len=3):
+    """Boggle scoring for 2+ players.
+
+    players: {name: [words...]}. Every word is first checked like score_words (long
+    enough, on the board, in the dictionary, not repeated in the player's own list).
+    Then, as in the real game, any valid word that appears on more than one player's
+    list is crossed off for everybody and scores nothing.
+
+    Returns (tables, leaderboard, shared):
+      tables      {name: DataFrame(word, letters, status, points, shared with, path)}
+      leaderboard DataFrame(Rank, Player, Score, Words counted, Crossed off (shared), Not counted)
+      shared      DataFrame(word, letters, players, points lost each)
+    """
+    tables = {name: score_words(grid, entries, dictionary, min_len) for name, entries in players.items()}
+    holders = {}
+    for name, t in tables.items():
+        for w in t.loc[t.status == "Counts", "word"]:
+            holders.setdefault(w, []).append(name)
+    shared_words = {w: names for w, names in holders.items() if len(names) > 1}
+
+    for name, t in tables.items():
+        t["shared with"] = ""
+        hit = (t.status == "Counts") & t.word.isin(shared_words)
+        t.loc[hit, "shared with"] = t.loc[hit, "word"].map(
+            lambda w: ", ".join(p for p in shared_words[w] if p != name))
+        t["points lost"] = 0
+        t.loc[hit, "points lost"] = t.loc[hit, "points"]
+        t.loc[hit, "status"] = "Crossed off (shared)"
+        t.loc[hit, "points"] = 0
+        tables[name] = t[["word", "letters", "status", "points", "shared with", "path (row,col)"]]
+
+    board = pd.DataFrame([{
+        "Player": name,
+        "Score": int(t.points.sum()),
+        "Words counted": int((t.status == "Counts").sum()),
+        "Crossed off (shared)": int((t.status == "Crossed off (shared)").sum()),
+        "Not counted": int((~t.status.isin(["Counts", "Crossed off (shared)"])).sum()),
+    } for name, t in tables.items()])
+    board = board.sort_values("Score", ascending=False, kind="stable").reset_index(drop=True)
+    board.insert(0, "Rank", board.Score.rank(method="min", ascending=False).astype(int))
+
+    shared = pd.DataFrame(
+        [{"word": w, "letters": len(w), "players": ", ".join(n), "points lost each": points(len(w))}
+         for w, n in sorted(shared_words.items(), key=lambda kv: (-len(kv[0]), kv[0]))],
+        columns=["word", "letters", "players", "points lost each"])
+    return tables, board, shared
