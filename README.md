@@ -53,7 +53,15 @@ In the sidebar, **Use my own word list** accepts `.txt`, `.csv` or `.xlsx`:
 - A first row labelled `word`, `words`, `term`, `list` and similar is skipped as a header.
 - Only purely alphabetic entries are used; numbers and punctuation are ignored. Keep the file
   to words only, since any other text in it would be read as words too.
-- When a list is uploaded it replaces the built-in dictionary for that solve.
+- After uploading, choose what the list is:
+  - **The words I found (score them)** – your game score. Each word is checked against the
+    board and the dictionary. You get your total points, how many words counted, the share of
+    the possible score, and a status for every word: *Counts*, *Not on the board*,
+    *Not a dictionary word*, *Too short* or *Duplicate*. A "Words you missed" list shows
+    what you could still have found, and everything can be downloaded as Excel or CSV.
+  - **A dictionary to search with** – finds every board word that appears in your list.
+- In a real game, words another player also found are crossed off for everyone, so subtract
+  those from your score.
 
 ## Tips for a good photo
 - Shoot from straight above with the whole dark tray in the frame.

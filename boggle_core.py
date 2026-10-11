@@ -36,8 +36,8 @@ def _tokens(cell):
             yield tok
 
 
-def parse_wordlist(filename: str, data: bytes) -> set:
-    """Words from an uploaded list: .txt (one per line), .csv or .xlsx (every cell of
+def parse_wordlist_entries(filename: str, data: bytes) -> list:
+    """Words from an uploaded list, in file order (duplicates kept): .txt (one per line), .csv or .xlsx (every cell of
     every column / sheet; a cell may hold several words separated by spaces, commas or
     semicolons). A first row containing a header label such as 'word' is skipped.
     Entries that are not purely alphabetic are ignored."""
@@ -62,7 +62,12 @@ def parse_wordlist(filename: str, data: bytes) -> set:
         if ext == ".csv" and lines and any(t in HEADER_LABELS for t in _tokens(lines[0])):
             lines = lines[1:]
         rows = [[ln] for ln in lines]
-    return {tok for row in rows for cell in row for tok in _tokens(cell)}
+    return [tok for row in rows for cell in row for tok in _tokens(cell)]
+
+
+def parse_wordlist(filename: str, data: bytes) -> set:
+    """Same as parse_wordlist_entries but as a set of unique words."""
+    return set(parse_wordlist_entries(filename, data))
 
 
 def build_prefixes(words) -> set:
@@ -115,3 +120,62 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
                 total_points=("points", "sum"))
            .reset_index().sort_values("letters", ascending=False))
     return s.reset_index(drop=True)
+
+
+def find_on_board(grid, word):
+    """Return the list of (row, col) cubes spelling `word`, or None if it can't be formed."""
+    cubes = [[str(c).strip().lower() for c in row] for row in grid]
+    rows, cols = len(cubes), len(cubes[0])
+    word = word.lower()
+
+    def dfs(r, c, pos, path):
+        cube = cubes[r][c]
+        if not cube or not word.startswith(cube, pos):
+            return None
+        path = path + [(r, c)]
+        pos += len(cube)
+        if pos == len(word):
+            return path
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                nr, nc = r + dr, c + dc
+                if (dr or dc) and 0 <= nr < rows and 0 <= nc < cols and (nr, nc) not in path:
+                    found = dfs(nr, nc, pos, path)
+                    if found:
+                        return found
+        return None
+
+    for r in range(rows):
+        for c in range(cols):
+            found = dfs(r, c, 0, [])
+            if found:
+                return found
+    return None
+
+
+def score_words(grid, entries, dictionary, min_len=3) -> pd.DataFrame:
+    """Score a player's own list against the board.
+
+    A word counts only if it is long enough, can be traced on the board, is a real
+    dictionary word and was not already listed. Returns one row per entry:
+    word, letters, status, points, path.
+    """
+    seen, rows = set(), []
+    for w in entries:
+        w = w.lower()
+        path = find_on_board(grid, w)
+        if w in seen:
+            status = "Duplicate"
+        elif len(w) < min_len:
+            status = "Too short"
+        elif path is None:
+            status = "Not on the board"
+        elif w not in dictionary:
+            status = "Not a dictionary word"
+        else:
+            status = "Counts"
+        seen.add(w)
+        rows.append({"word": w, "letters": len(w), "status": status,
+                     "points": points(len(w)) if status == "Counts" else 0,
+                     "path (row,col)": " -> ".join(f"({r+1},{c+1})" for r, c in path) if path else ""})
+    return pd.DataFrame(rows, columns=["word", "letters", "status", "points", "path (row,col)"])

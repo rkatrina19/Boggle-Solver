@@ -87,6 +87,14 @@ with st.sidebar:
                         help="Classic Boggle accepts 3+ letters; Big Boggle is usually played with 4+.")
     custom = st.file_uploader("Use my own word list", type=["txt", "csv", "xlsx"],
                               help="Upload .txt, .csv or .xlsx. Words can be in any column or sheet, one or several per cell.")
+    list_mode = "dict"
+    if custom is not None:
+        list_mode = "score" if st.radio(
+            "What is this list?",
+            ["The words I found (score them)", "A dictionary to search with"],
+            help="Score: checks each of your words against the board and the dictionary and "
+                 "totals your points. Dictionary: finds every board word that appears in your list."
+        ).startswith("The words") else "dict"
     st.markdown(
         "**Scoring**  \n3–4 letters = 1 pt · 5 = 2 · 6 = 3 · 7 = 5 · 8+ = 11  \n"
         "Qu counts as two letters.")
@@ -152,24 +160,77 @@ if bad:
     st.error(f"Each cell needs one letter (or Qu). Fix: {bad}")
     st.stop()
 
-if st.button("Find all words", type="primary"):
+score_mode = custom is not None and list_mode == "score"
+if st.button("Score my words" if score_mode else "Find all words", type="primary"):
+    entries = None
     if custom is not None:
         try:
-            words = core.parse_wordlist(custom.name, custom.getvalue())
+            entries = core.parse_wordlist_entries(custom.name, custom.getvalue())
         except Exception as exc:
             st.error(f"Couldn't read that word list ({exc}). Try .txt, .csv or .xlsx with one word per cell.")
             st.stop()
-        if not words:
+        if not entries:
             st.error("No words found in that file. Put one word per cell (or per line).")
             st.stop()
+    dictionary, dict_prefixes = get_dictionary()
+    st.session_state.mine = None
+    if score_mode:                                   # score the player's words, keep the full list for comparison
+        st.session_state.solved = core.solve(grid, dictionary, dict_prefixes, min_len)
+        st.session_state.mine = core.score_words(grid, entries, dictionary, min_len)
+    elif entries is not None:                        # custom dictionary
+        words = set(entries)
         st.toast(f"Using your word list: {len(words):,} words")
-        prefixes = core.build_prefixes(words)
+        st.session_state.solved = core.solve(grid, words, core.build_prefixes(words), min_len)
     else:
-        words, prefixes = get_dictionary()
-    st.session_state.solved = core.solve(grid, words, prefixes, min_len)
+        st.session_state.solved = core.solve(grid, dictionary, dict_prefixes, min_len)
 
 df = st.session_state.get("solved")
-if df is not None:
+mine = st.session_state.get("mine")
+
+
+def excel_bytes(sheets: dict) -> bytes:
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as xw:
+        for name, frame in sheets.items():
+            frame.to_excel(xw, sheet_name=name, index=False)
+    return out.getvalue()
+
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+if mine is not None and df is not None:
+    counted = mine[mine.status == "Counts"]
+    possible = int(df.points.sum())
+    my_score = int(counted.points.sum())
+    st.markdown("### My score")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("My score", my_score)
+    m2.metric("Words counted", f"{len(counted)} of {len(mine)}")
+    m3.metric("Possible on this board", possible)
+    m4.metric("Share of possible", f"{my_score / possible:.0%}" if possible else "-")
+    st.caption("Words that another player also found are crossed off for everyone in a real game, "
+               "so subtract those from your score.")
+
+    palette = {"Counts": "rgba(46,160,67,.22)"}
+    styled = mine.style.apply(
+        lambda row: [f"background-color: {palette.get(row['status'], 'rgba(220,53,69,.18)')}"] * len(row), axis=1)
+    st.dataframe(styled, hide_index=True, width="stretch", height=min(420, 38 + 35 * len(mine)))
+
+    reasons = mine[mine.status != "Counts"].status.value_counts()
+    if len(reasons):
+        st.caption("Not counted: " + " · ".join(f"{n} {k.lower()}" for k, n in reasons.items()))
+
+    missed = df[~df.word.isin(counted.word)].sort_values(["points", "letters", "word"], ascending=[False, False, True])
+    with st.expander(f"Words you missed ({len(missed)}, worth {int(missed.points.sum())} more points)"):
+        st.dataframe(missed, hide_index=True, width="stretch", height=360)
+    with st.expander("All possible words on this board"):
+        st.dataframe(df, hide_index=True, width="stretch", height=360)
+
+    d1, d2 = st.columns(2)
+    d1.download_button("Download my score (Excel)", excel_bytes({"My score": mine, "Missed": missed, "All words": df}),
+                       "boggle_my_score.xlsx", XLSX)
+    d2.download_button("Download my score (CSV)", mine.to_csv(index=False), "boggle_my_score.csv", "text/csv")
+elif df is not None:
     summary = core.summarize(df)
     m1, m2, m3 = st.columns(3)
     m1.metric("Words found", len(df))
@@ -183,11 +244,7 @@ if df is not None:
     with right:
         st.dataframe(df, hide_index=True, width="stretch", height=420)
 
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as xw:
-        df.to_excel(xw, sheet_name="All words", index=False)
-        summary.to_excel(xw, sheet_name="Summary", index=False)
     d1, d2 = st.columns(2)
-    d1.download_button("Download Excel", buf.getvalue(), "boggle_words.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    d1.download_button("Download Excel", excel_bytes({"All words": df, "Summary": summary}),
+                       "boggle_words.xlsx", XLSX)
     d2.download_button("Download CSV", df.to_csv(index=False), "boggle_words.csv", "text/csv")
